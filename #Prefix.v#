@@ -110,6 +110,7 @@ Fixpoint decode_helper (b unmatched: B): option (list V) :=
 Definition decode (b: B): option (list V) :=
   decode_helper b nil.
 
+(* lol this is fall
 Lemma flat_map_nil: 
   forall A B (f: A->list B) x,
   flat_map f x = nil -> x = nil.
