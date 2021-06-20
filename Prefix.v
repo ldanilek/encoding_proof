@@ -83,6 +83,16 @@ induction b; autounfold; simpl; intros; trivial.
 discriminate.
 Qed.
 
+Lemma is_prefix_append: forall p b f, is_prefix p (b ++ (f::nil)) ->
+  is_prefix p b \/ p = b ++ (f::nil).
+Proof.
+intros. apply is_prefix_app in H. 
+destruct H.
+rewrite <- H. destruct x.
+- right. rewrite app_nil_r. reflexivity.
+- left. apply is_prefix_spec. 
+Qed.
+
 End PREFIX.
 
 Section CODE.
@@ -144,6 +154,14 @@ symmetry in Heqv. apply c_d_inv in Heqv. apply nonempty_code in Heqv.
 contradiction.
 Qed.
 
+Lemma append_unmatched: forall unmatched f,
+  is_unmatched_prefix unmatched ->
+  d (unmatched ++ (f::nil)) = None ->
+  is_unmatched_prefix (unmatched ++ (f::nil)).
+Proof.
+intros. unfold is_unmatched_prefix.
+
+Qed.
 
 (* decodes unmatched++b into list of values *)
 Fixpoint decode_helper (unmatched b: B) 
