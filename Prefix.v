@@ -77,6 +77,12 @@ Proof.
 intros. autounfold. simpl. easy.
 Qed.
 
+Lemma is_nil_prefix: forall b, is_prefix b nil -> b = nil.
+Proof.
+induction b; autounfold; simpl; intros; trivial.
+discriminate.
+Qed.
+
 End PREFIX.
 
 Section CODE.
@@ -125,8 +131,24 @@ Qed.
 Definition encode (vs: list V): B :=
   flat_map c vs.
 
+Definition is_unmatched_prefix (unmatched: B) :=
+  forall p, is_prefix p unmatched -> d p = None.
+
+Lemma nil_is_unmatched: is_unmatched_prefix nil.
+Proof.
+unfold is_unmatched_prefix; intros; simpl.
+apply is_nil_prefix in H. rewrite H.
+unfold is_prefix in H. unfold is_prefix_bool in H.
+remember (d nil) as v. destruct v; trivial.
+symmetry in Heqv. apply c_d_inv in Heqv. apply nonempty_code in Heqv.
+contradiction.
+Qed.
+
+
 (* decodes unmatched++b into list of values *)
-Fixpoint decode_helper (unmatched b: B) {struct b}: option (list V) :=
+Fixpoint decode_helper (unmatched b: B) 
+(proof_unmatched: is_unmatched_prefix unmatched)
+{struct b}: option (list V) :=
   match b with
   | nil => match unmatched with
     | nil => Some nil
@@ -136,7 +158,7 @@ Fixpoint decode_helper (unmatched b: B) {struct b}: option (list V) :=
     let pref := unmatched ++ (f::nil) in
       match d pref with
       | None => decode_helper pref r
-      | Some v => match decode_helper nil r with
+      | Some v => match decode_helper nil r proof_ with
         | None => None
         | Some vs => Some (v :: vs)
         end
