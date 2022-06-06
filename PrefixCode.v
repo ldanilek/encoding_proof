@@ -17,18 +17,28 @@ Definition equal_some (T: Type) (x: option T) (y: T): Prop :=
   x = Some y.
 
 Lemma none_dec: forall T (x: option T),
-  {x = None} + {True}.
+  {x = None} + {x <> None}.
 Proof.
-destruct x. right. trivial.
+destruct x. right. intro. discriminate.
 left. reflexivity.
 Defined.
 
 Section CODE.
 
+Variable X: Type.
+Hypothesis x_eq_dec: forall (x y: X), {x = y} + {x <> y}.
+Definition B := B X.
+Definition is_prefix := is_prefix x_eq_dec.
+
 (* the type being encoded. e.g. letters *)
 Variable V: Type.
 
 (* V has at least two possible values *)
+(* this may not seem necessary, but it actually is.
+  if there's exactly one possible value, a valid prefix code
+  could map it to the empty (nil) bytestring.
+  Then decoding an empty bytestring would be ambiguous.
+*)
 Variable v01 v02: V.
 Hypothesis v_diff:
   v01 <> v02.
@@ -57,7 +67,7 @@ Proof.
 intros. intro.
 cut (exists v1, v1 <> v).
 intro. destruct H0.
-assert (NIL := is_prefix_nil (c x)).
+assert (NIL := is_prefix_nil x_eq_dec (c x)).
 rewrite <- H in NIL.
 apply is_prefix_code in NIL.
 apply H0. auto.
@@ -95,6 +105,28 @@ destruct H1. apply H. assumption.
 subst p. assumption.
 Qed.
 
+Lemma nil_app_inv: forall T (a: list T) b,
+  a ++ b = nil <-> a = nil /\ b = nil.
+Proof.
+intros. split.
+apply app_eq_nil.
+intro. destruct H. subst. simpl. trivial.
+Qed.
+
+Lemma encode_prefix_unique: forall vs v p b,
+  c v = p ->
+  encode vs = p ++ b ->
+  head vs = Some v.
+Proof.
+induction vs; simpl; intros.
+- (* vs is nil *)
+exfalso. symmetry in H0. apply nil_app_inv in H0. destruct H0.
+subst. eapply nonempty_code. eassumption.
+- (* vs is nonempty, so must start with v *)
+subst p.
+apply (equal_prefix x_eq_dec) in H0.
+destruct H0; apply is_prefix_code in H; subst a; reflexivity.
+Qed.
 
 
 (* decodes unmatched++b into list of values *)
@@ -122,6 +154,7 @@ Fixpoint decode_helper (unmatched b: B)
       end
   end.
 
+(* note the @ sign disables implicit arguments *)
 Definition decode (b: B): option (list V) :=
   @decode_helper nil b nil_is_unmatched.
 
@@ -165,6 +198,15 @@ Proof.
 intros. rewrite list_split. rewrite app_assoc. reflexivity.
 Qed.
 
+Lemma suffix_eq: forall T (a: list T) b c,
+  a ++ b = a ++ c -> b = c.
+Proof.
+induction a; simpl; intros.
+assumption.
+injection H; intro. apply IHa. assumption.
+Qed.
+
+
 Lemma decode_helper_inv:
   forall b unmatched vs is_unmatched,
   @decode_helper unmatched b is_unmatched = Some vs
@@ -179,7 +221,7 @@ induction b.
   * (* b empty, unmatched nonempty *)
   split; intros. discriminate. exfalso.
   rewrite app_nil_r in H.
-  cut (b::unmatched = nil).
+  cut (x::unmatched = nil).
     + intro. discriminate.
     + eapply encode_not_unmatched; eauto.
 - (* b nonempty *)
@@ -202,26 +244,44 @@ induction b.
       simpl. reflexivity.
       discriminate.
     * (* valid encode -> valid decode *)
-      
-  
-  
-  
+      destruct vs. simpl in H.
+      { symmetry in H. apply nil_app_inv in H. destruct H.
+      apply nil_app_inv in H. destruct H. discriminate.
+      }
+      symmetry in Heqd_pref. apply c_d_inv in Heqd_pref.
+      assert (V0 := Heqd_pref).
+      eapply encode_prefix_unique in V0; eauto.
+      simpl in V0. injection V0; intro.
+      subst v0.
+      simpl in H.
+      rewrite <- Heqd_pref in H.
+      apply suffix_eq in H.
+      replace b with (nil ++ b) in H.
+      apply (IHb nil vs nil_is_unmatched) in H.
+      rewrite H. reflexivity. simpl. reflexivity.
+  + (* unmatched ++ a :: nil cannot be decoded *)
+    pattern (d (unmatched++a::nil)) at 1. rewrite <- Heqd_pref.
+    split; intro.
+    * (* valid decode -> valid encode *)
+      destruct (none_dec (d (unmatched++a::nil))); try discriminate.
+      apply IHb in H. assumption.
+    * (* valid encode -> valid decode *)
+      remember (none_dec (d (unmatched++a::nil))) as Ndec.
+      destruct Ndec.
+      apply (IHb (unmatched++a::nil) vs (append_unmatched a is_unmatched e)) in H.
+      assumption.
+      symmetry in Heqd_pref. apply n in Heqd_pref. contradiction.
 Qed.
 
 Theorem encode_decode_inv:
   forall bs vs, decode bs = Some vs <-> encode vs = bs.
 Proof.
-induction bs; unfold decode; simpl; intros.
-- (* encoded to nil *)
-split; intros. injection H; intros; subst. simpl. trivial.
-apply encode_not_nil in H. rewrite H. trivial.
-- (* encoded to not nil *)
-unfold encode. 
-split. 
-
-
-
+unfold decode.
+intros. replace (encode vs = bs) with (encode vs = nil ++ bs).
+apply decode_helper_inv.
+rewrite app_nil_l. reflexivity.
 Qed.
+
 
 End CODE.
 
